@@ -1,0 +1,7 @@
+# Set SITE_HOST in .env (e.g. yourname.duckdns.org). Caddy gets HTTPS automatically.
+{$SITE_HOST} {
+	basic_auth {
+		{$DASHBOARD_USER} {$DASHBOARD_HASH}
+	}
+	reverse_proxy app:3000
+}

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="chotu — review queue, scorecard, ops. You paste, it learns." />
+  <title>chotu dashboard</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <strong>chotu</strong>
+      <span class="muted">you paste · it learns</span>
+      <span id="health-dot" class="dot unknown" title="API health">●</span>
+    </div>
+    <div class="ws-row">
+      <label for="workspace">workspace</label>
+      <select id="workspace" aria-label="workspace picker">
+        <option value="">loading…</option>
+      </select>
+      <button id="refresh" type="button" title="reload current tab">reload</button>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="dashboard tabs">
+      <button role="tab" aria-selected="true" data-tab="queue" class="active" type="button">Queue</button>
+      <button role="tab" aria-selected="false" data-tab="scorecard" type="button">Scorecard</button>
+      <button role="tab" aria-selected="false" data-tab="ops" type="button">Ops</button>
+    </nav>
+  </header>
+
+  <main>
+    <p id="notice" class="notice" hidden></p>
+
+    <!-- QUEUE -->
+    <section id="tab-queue" role="tabpanel" aria-label="review queue">
+      <p class="hint">One card per opportunity. Pick a platform tab, copy, paste natively, then register the live URL. chotu never posts.</p>
+      <div id="queue-list" class="cards"></div>
+    </section>
+
+    <!-- SCORECARD -->
+    <section id="tab-scorecard" role="tabpanel" aria-label="scorecard" hidden>
+      <div class="grid2">
+        <div class="panel">
+          <h2>Traffic trend <span class="muted small">directional</span></h2>
+          <svg id="traffic-chart" viewBox="0 0 320 90" role="img" aria-label="traffic trend chart"></svg>
+          <div id="traffic-legend" class="muted small"></div>
+        </div>
+        <div class="panel">
+          <h2>Referrals + signups</h2>
+          <div id="signup-total" class="bignum">—</div>
+          <table id="referral-table">
+            <thead><tr><th>source</th><th>sessions</th></tr></thead>
+            <tbody><tr><td colspan="2" class="muted">no data yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Per-post lift <span class="muted small">±3d window · exact vs inferred</span></h2>
+        <div class="tablewrap">
+          <table id="lift-table">
+            <thead><tr><th>post</th><th>window</th><th>traffic lift</th><th>signup lift</th><th>method</th></tr></thead>
+            <tbody><tr><td colspan="5" class="muted">no attribution rows yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Channel × angle × hook <span class="muted small">PMF signal, directional</span></h2>
+        <div class="tablewrap">
+          <table id="matrix-table">
+            <thead><tr><th>channel</th><th>angle</th><th>hook</th><th>n</th><th>avg lift</th></tr></thead>
+            <tbody><tr><td colspan="5" class="muted">no matrix rows yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- OPS -->
+    <section id="tab-ops" role="tabpanel" aria-label="ops" hidden>
+      <div class="panel">
+        <h2>Doctor</h2>
+        <ul id="doctor-list" class="kv"><li class="muted">checking…</li></ul>
+      </div>
+      <div class="panel">
+        <h2>Failed jobs <span class="muted small">dead-letter → retry</span></h2>
+        <div class="tablewrap">
+          <table id="jobs-table">
+            <thead><tr><th>id</th><th>type</th><th>error</th><th>attempts</th><th></th></tr></thead>
+            <tbody><tr><td colspan="5" class="muted">no failed jobs</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot muted small">
+    <span>attribution is directional, not accounting · anon-key + RLS only</span>
+  </footer>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# chotu pre-commit: block secrets from entering git history.
+# Uses gitleaks if installed, else a grep fallback. No secrets in git (AGENTS.md).
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$REPO_ROOT"
+
+# Not a git checkout (or no index): nothing to scan, pass clean.
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  exit 0
+fi
+
+if command -v gitleaks >/dev/null 2>&1; then
+  if [ -f ".gitleaks.toml" ]; then
+    gitleaks protect --staged --verbose --config .gitleaks.toml
+  else
+    gitleaks protect --staged --verbose
+  fi
+  exit $?
+fi
+
+echo "[pre-commit] gitleaks not found, using grep fallback" >&2
+
+# Staged content only; never scans worktree-untracked or history.
+STAGED_DIFF="$(git diff --cached --unified=0 -- . ':!package-lock.json' || true)"
+if [ -z "$STAGED_DIFF" ]; then
+  exit 0
+fi
+
+PATTERN='sk-[A-Za-z0-9]{8,}|sk-or-v1-[A-Za-z0-9]{8,}|eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_/-]+|ghp_[A-Za-z0-9]{8,}|gsk_[A-Za-z0-9]{8,}|xox[bap]-[A-Za-z0-9-]{8,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
+
+HITS="$(printf '%s\n' "$STAGED_DIFF" | grep -nE "$PATTERN" || true)"
+if [ -n "$HITS" ]; then
+  echo "[pre-commit] BLOCKED: possible secret in staged diff:" >&2
+  echo "$HITS" | cut -c1-200 >&2
+  echo "[pre-commit] Remove the secret or install gitleaks for full scan." >&2
+  exit 1
+fi
+
+exit 0
