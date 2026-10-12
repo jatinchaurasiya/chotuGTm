@@ -170,6 +170,22 @@ function queriesForWorkspace(ws: WorkspaceRow): string[] {
   return seeds.length > 0 ? seeds : [];
 }
 
+/** Subreddits to poll via no-auth RSS.
+ * Top-level `reddit_subreddits` wins; falls back to nested `reddit.subreddits`
+ * (the shape seeds use). */
+function redditSubsForWorkspace(ws: WorkspaceRow): string[] {
+  const cfg = (ws.channel_config ?? {}) as Record<string, unknown>;
+  const top = cfg.reddit_subreddits;
+  const nested = (cfg.reddit as Record<string, unknown> | undefined)?.subreddits;
+  const subs = (Array.isArray(top) && top.length > 0 ? top : Array.isArray(nested) ? nested : []);
+  if (!Array.isArray(subs)) return [];
+  return subs
+    .filter((s): s is string => typeof s === "string" && s.trim() !== "")
+    .map((s) => s.replace(/^r\//i, "").trim())
+    .filter((s) => /^[A-Za-z0-9_]+$/.test(s))
+    .slice(0, 25);
+}
+
 /* ------------------------------------------------------------------ */
 /* discover                                                            */
 /* ------------------------------------------------------------------ */
@@ -209,7 +225,26 @@ export async function discoverProcessor(job: Job): Promise<Record<string, unknow
       const tiny = new TinyFishClient();
       const cache = new ApiAnythingClient();
       const queries = data.workspace_id && data.queries?.length ? data.queries : queriesForWorkspace(ws);
-      if (queries.length === 0) {
+      // No-auth Reddit RSS: polled when the oauth tier is unavailable
+      // (Responsible Builder gate). Sequential + throttled inside; a throttle
+      // is a skip, never fatal to the run.
+      let direct: Array<{ url: string; title: string; snippet?: string; source: string; skipFetch?: boolean }> = [];
+      try {
+        const { pollSubreddits, redditTier } = await import("../discover/reddit-rss.js");
+        if (redditTier() === "rss") {
+          const subs = redditSubsForWorkspace(ws);
+          if (subs.length > 0) {
+            const rss = await pollSubreddits(subs, ["hot"]);
+            direct = rss.candidates;
+            for (const [reason, n] of Object.entries(rss.skipped)) {
+              console.info(`[discover] reddit-rss skip reason=${reason} n=${n}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn(`[discover] reddit-rss unavailable, continuing without: ${errText(e).slice(0, 160)}`);
+      }
+      if (queries.length === 0 && direct.length === 0) {
         summary[ws.id] = { skipped: "no-queries" };
         continue;
       }
@@ -238,7 +273,7 @@ export async function discoverProcessor(job: Job): Promise<Record<string, unknow
           }
           return true;
         },
-      });
+      }, direct);
       summary[ws.id] = stats;
       // Event-driven fan-out: fresh batch -> triage (stable hourly jobId = dedupe on re-fire).
       const hourBucket = new Date().toISOString().slice(0, 13).replace(/[^0-9]/g, "");

@@ -11,6 +11,7 @@
 import { dedupeHash } from "./dedupe.js";
 import type { TinyFishResult } from "./tinyfish.js";
 import type { ScraplingResult } from "./scrapling.js";
+import type { DirectCandidate } from "./reddit-rss.js";
 
 export interface DiscoverQueryPlan {
   query: string;
@@ -54,10 +55,61 @@ function toPlan(queries: Array<string | DiscoverQueryPlan>): DiscoverQueryPlan[]
   return queries.map((q) => (typeof q === "string" ? { query: q, isRepeat: false } : q));
 }
 
+async function ingestCandidate(
+  workspaceId: string,
+  c: { url: string; title: string; snippet?: string; source: string; skipFetch?: boolean },
+  deps: DiscoverDeps,
+  stats: DiscoverRunStats,
+  seenThisRun: Set<string>,
+  noteSkip: (url: string, reason: string) => void,
+): Promise<void> {
+  const hash = dedupeHash(c.url, c.title);
+  if (seenThisRun.has(hash)) {
+    stats.duplicates += 1;
+    return;
+  }
+  seenThisRun.add(hash);
+
+  let finalUrl = c.url;
+  let htmlLength = (c.snippet ?? "").length;
+  if (!c.skipFetch) {
+    const fetched = await deps.fetchPage(c.url);
+    if (fetched.skipped) {
+      noteSkip(c.url, fetched.reason);
+      return;
+    }
+    stats.fetched += 1;
+    finalUrl = fetched.finalUrl;
+    htmlLength = fetched.html.length;
+  }
+
+  const opp: PreparedOpportunity = {
+    workspaceId,
+    url: c.url,
+    finalUrl,
+    title: c.title,
+    snippet: c.snippet,
+    source: c.source,
+    dedupeHash: hash,
+    htmlLength,
+    fetchedAt: new Date().toISOString(),
+  };
+  let inserted = false;
+  try {
+    inserted = await deps.insertOpportunity(opp);
+  } catch (err) {
+    console.warn(`[discover] insert failed hash=${hash.slice(0, 12)} err=${String(err)}`);
+    return;
+  }
+  if (inserted) stats.inserted += 1;
+  else stats.duplicates += 1;
+}
+
 export async function runDiscover(
   workspaceId: string,
   queries: Array<string | DiscoverQueryPlan>,
   deps: DiscoverDeps,
+  direct: DirectCandidate[] = [],
 ): Promise<DiscoverRunStats> {
   const plans = toPlan(queries);
   const stats: DiscoverRunStats = {
@@ -86,41 +138,15 @@ export async function runDiscover(
 
     for (const r of results) {
       stats.candidates += 1;
-      const hash = dedupeHash(r.url, r.title);
-      if (seenThisRun.has(hash)) {
-        stats.duplicates += 1;
-        continue;
-      }
-      seenThisRun.add(hash);
-
-      const fetched = await deps.fetchPage(r.url);
-      if (fetched.skipped) {
-        noteSkip(r.url, fetched.reason);
-        continue;
-      }
-      stats.fetched += 1;
-
-      const opp: PreparedOpportunity = {
-        workspaceId,
-        url: r.url,
-        finalUrl: fetched.finalUrl,
-        title: r.title,
-        snippet: r.snippet,
-        source: r.source ?? "web",
-        dedupeHash: hash,
-        htmlLength: fetched.html.length,
-        fetchedAt: new Date().toISOString(),
-      };
-      let inserted = false;
-      try {
-        inserted = await deps.insertOpportunity(opp);
-      } catch (err) {
-        console.warn(`[discover] insert failed hash=${hash.slice(0, 12)} err=${String(err)}`);
-        continue;
-      }
-      if (inserted) stats.inserted += 1;
-      else stats.duplicates += 1;
+      await ingestCandidate(workspaceId, { url: r.url, title: r.title, snippet: r.snippet, source: r.source ?? "web" }, deps, stats, seenThisRun, noteSkip);
     }
+  }
+
+  // Prefetched candidates (e.g. Reddit RSS): same dedupe → fetch-or-skip →
+  // insert path. skipFetch entries insert straight from feed content.
+  for (const d of direct) {
+    stats.candidates += 1;
+    await ingestCandidate(workspaceId, d, deps, stats, seenThisRun, noteSkip);
   }
 
   console.info(
