@@ -6,7 +6,7 @@
  * skim, no auto-draft), < low discard. Thresholds from env.
  * Cost: ~$0.021/1M input tokens, output free; tokens + cost logged per batch.
  */
-import { retry, isRetryableStatus } from "../queue/retry.js";
+import { retry, isRetryableError } from "../queue/retry.js";
 
 export type TriageBand = "draft" | "maybe" | "discard";
 
@@ -66,7 +66,11 @@ function clamp01(n: number): number {
   return Math.min(1, Math.max(0, n));
 }
 
-/** SystemOne-style decisions payload: state + typed yes/no + score questions. */
+/** Decisions payload per the Inception API reference (POST /v1/decisions):
+ * model "mercury-decide", state object, questions as a KEYED OBJECT with
+ * noul/score types ("instructions", not "text"). Score questions REQUIRE a
+ * criteria array (min 1); answers come back on the rubric scale, so the
+ * parser normalizes score/maxIndex into 0..1. */
 function buildDecisionsPayload(model: string, input: DecideInput): Record<string, unknown> {
   return {
     model,
@@ -76,21 +80,26 @@ function buildDecisionsPayload(model: string, input: DecideInput): Record<string
       url: input.url ?? "",
       workspace_context: input.workspaceContext ?? "",
     },
-    questions: [
-      { id: "relevant", type: "yes_no", text: "Is this opportunity relevant to the workspace offering?" },
-      { id: "intent", type: "yes_no", text: "Does the author show active buying, switching, or research intent?" },
-      {
-        id: "relevance_score",
-        type: "score",
-        text: "Calibrated probability 0..1 that this opportunity is relevant to the workspace offering.",
+    questions: {
+      relevant: {
+        type: "noul",
+        instructions: "Is this opportunity relevant to the workspace offering described in the state?",
       },
-      {
-        id: "intent_score",
-        type: "score",
-        text: "Calibrated probability 0..1 that the author will act (reply/click/convert) if engaged well.",
+      intent: {
+        type: "noul",
+        instructions: "Does the author show active buying, switching, or research intent?",
       },
-    ],
-    response_format: { type: "json_object" },
+      relevance_score: {
+        type: "score",
+        instructions: "Rate how relevant this opportunity is to the workspace offering.",
+        criteria: ["Not relevant", "Somewhat relevant", "Highly relevant"],
+      },
+      intent_score: {
+        type: "score",
+        instructions: "Rate how likely the author is to act (reply/click/convert) if engaged well.",
+        criteria: ["No intent", "Weak intent", "Strong intent"],
+      },
+    },
   };
 }
 
@@ -143,8 +152,30 @@ function answersFrom(body: unknown): { relevance: number; intent: number; inputT
   }
   if (typeof node === "string") node = extractJson(node) ?? {};
   const a = (typeof node === "object" && node !== null ? node : {}) as Record<string, unknown>;
-  const relevance = num(a.relevance_score ?? a.relevance) ?? yesNo(a.relevant, 0.5);
-  const intent = num(a.intent_score ?? a.intent) ?? yesNo(a.intent, 0.5);
+  // Mercury Decide answer shapes: {type:'noul',noul:0..1} and
+  // {type:'score',score:<rubric position>} where the rubric here has 3 levels
+  // (indices 0..2), so score/2 normalizes to 0..1. Legacy flat shapes kept.
+  const relAns = a.relevance_score as Record<string, unknown> | undefined;
+  const intAns = a.intent_score as Record<string, unknown> | undefined;
+  const rawNum = (v: unknown): number | undefined => {
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v))) return Number(v);
+    return undefined;
+  };
+  const rubricNorm = (v: unknown): number | undefined => {
+    const n = rawNum(v);
+    // Divide FIRST (rubric scale 0..2), clamp after — num() clamps to 1
+    // before dividing, which pins every score above 1.0 to exactly 0.5.
+    return n === undefined ? undefined : clamp01(n / 2);
+  };
+  const relevance =
+    (relAns && typeof relAns === "object" ? rubricNorm(relAns.score) : undefined) ??
+    num(a.relevance_score ?? a.relevance) ??
+    yesNo(a.relevant, 0.5);
+  const intent =
+    (intAns && typeof intAns === "object" ? rubricNorm(intAns.score) : undefined) ??
+    num(a.intent_score ?? a.intent) ??
+    yesNo(a.intent, 0.5);
   let inputTokens: number | undefined;
   const usage = (body as Record<string, unknown> | null)?.usage as Record<string, unknown> | undefined;
   if (usage && typeof usage.input_tokens === "number") inputTokens = usage.input_tokens;
@@ -163,7 +194,7 @@ export async function decideMercury(input: DecideInput, opts: DecideOptions = {}
   const apiKey = opts.apiKey ?? process.env.INCEPTION_API_KEY ?? "";
   if (!apiKey) throw new TriageAuthError();
   const apiUrl = opts.apiUrl ?? process.env.INCEPTION_API_URL ?? "https://api.inceptionlabs.ai";
-  const model = opts.model ?? process.env.INCEPTION_MODEL ?? "mercury-system-one";
+  const model = opts.model ?? process.env.INCEPTION_MODEL ?? "mercury-decide";
   const fetchFn = opts.fetchFn ?? fetch;
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const { high, low } = { high: opts.high ?? readThresholds().high, low: opts.low ?? readThresholds().low };
@@ -190,7 +221,7 @@ export async function decideMercury(input: DecideInput, opts: DecideOptions = {}
         clearTimeout(t);
       }
     },
-    { maxAttempts: 3, baseMs: 1000, retryOn: (err) => isRetryableStatus((err as { status?: number }).status ?? 0) },
+    { maxAttempts: 3, baseMs: 1000, retryOn: (err) => isRetryableError(err) },
   );
 
   const body = (await res.json()) as unknown;

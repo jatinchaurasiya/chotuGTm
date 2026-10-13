@@ -5,7 +5,7 @@
  * through the api-anything cache (apianything.ts). Stub-friendly: inject
  * `fetchFn` + a fake key in tests; no network needed.
  */
-import { retry, isRetryableStatus } from "../queue/retry.js";
+import { retry, isRetryableStatus, isRetryableError } from "../queue/retry.js";
 
 export interface TinyFishResult {
   url: string;
@@ -180,7 +180,9 @@ export class TinyFishClient {
         maxAttempts: 3,
         baseMs: 1000,
         retryOn: (err) =>
-          err instanceof TinyFishRateLimitError || /status=5\d\d/.test(String((err as Error)?.message ?? "")),
+          err instanceof TinyFishRateLimitError ||
+          /status=5\d\d/.test(String((err as Error)?.message ?? "")) ||
+          isRetryableError(err),
       },
     );
 

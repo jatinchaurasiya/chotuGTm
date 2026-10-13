@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { dedupeHash, normalizeUrl } from "../src/discover/dedupe.js";
-import { bandFor, combineScores } from "../src/triage/decide.js";
+import { bandFor, combineScores, decideMercury } from "../src/triage/decide.js";
 import { scoreSlop } from "../src/deslop/scorer.js";
 import { appendUtm, campaignFor } from "../src/draft/utm.js";
 import { retry } from "../src/queue/retry.js";
@@ -30,6 +30,24 @@ describe("triage bands", () => {
   });
   it("combine weights relevance 0.6 / intent 0.4", () => {
     assert.equal(combineScores(1, 0), 0.6);
+  });
+
+  it("parses rubric-scale scores above 1.0 (no 0.5 pinning)", async () => {
+    const raw = {
+      model: "mercury-decide",
+      answers: {
+        relevant: { type: "noul", noul: 0.9 },
+        intent: { type: "noul", noul: 0.05 },
+        relevance_score: { type: "score", score: 1.693 },
+        intent_score: { type: "score", score: 1.358 },
+      },
+      usage: { input_tokens: 100, output_tokens: 2 },
+    };
+    const stub = (async () => new Response(JSON.stringify(raw), { status: 200 })) as typeof fetch;
+    const d = await decideMercury({ title: "T" }, { fetchFn: stub, apiKey: "dummy" });
+    assert.ok(Math.abs(d.relevance - 0.8465) < 0.001, `relevance=${d.relevance}`);
+    assert.ok(Math.abs(d.intent - 0.679) < 0.001, `intent=${d.intent}`);
+    assert.equal(d.band, "draft");
   });
 });
 

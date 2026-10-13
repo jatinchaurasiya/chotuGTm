@@ -1,11 +1,14 @@
 /**
  * Draft lane: OpenRouter chat completions client (OpenRouter ONLY, no gateway).
  *
- * Ordered primary → fallback with exponential backoff on 429/5xx:
- *   primary  `thinkingmachines/inkling:free` (1M ctx, full Medium article one pass)
- *   fallback `nvidia/nemotron-3-ultra-550b-a55b:free`
- * Model used is logged per call. Non-retryable auth errors throw immediately;
- * deprecation (404/410) fails over to the next model.
+ * Ordered models with failover. Verified live (Oct 2026):
+ *   - `nvidia/nemotron-3-ultra-550b-a55b:free` works from plain API calls.
+ *   - `thinkingmachines/inkling:free` is gated by OpenRouter to approved
+ *     "agentic harnesses" (403 for direct callers) — kept as fallback in
+ *     case the gate lifts; a gated-403 fails over instead of aborting.
+ * Order via OPENROUTER_MODELS (comma list), else PRIMARY → FALLBACK env.
+ * Model used is logged per call. True auth failures (bad key) abort fast;
+ * deprecation (404/410) and model-gate (403) fail over to the next model.
  */
 import { retry } from "../queue/retry.js";
 
@@ -40,8 +43,10 @@ export class LlmAuthError extends Error {
 }
 
 export function readModels(): string[] {
-  const primary = process.env.OPENROUTER_PRIMARY_MODEL ?? "thinkingmachines/inkling:free";
-  const fallback = process.env.OPENROUTER_FALLBACK_MODEL ?? "nvidia/nemotron-3-ultra-550b-a55b:free";
+  const list = (process.env.OPENROUTER_MODELS ?? "").split(",").map((m) => m.trim()).filter(Boolean);
+  if (list.length > 0) return [...new Set(list)];
+  const primary = process.env.OPENROUTER_PRIMARY_MODEL ?? "nvidia/nemotron-3-ultra-550b-a55b:free";
+  const fallback = process.env.OPENROUTER_FALLBACK_MODEL ?? "thinkingmachines/inkling:free";
   return [...new Set([primary, fallback].map((m) => m.trim()).filter(Boolean))];
 }
 
@@ -89,7 +94,19 @@ async function attemptModel(
           }),
           signal: ctrl.signal,
         });
-        if (res.status === 401 || res.status === 403) throw new LlmAuthError(res.status);
+        if (res.status === 401) throw new LlmAuthError(res.status);
+        if (res.status === 403) {
+          // Distinguish a bad key (abort) from a per-model gate such as
+          // OpenRouter's "only available on agentic harnesses" (fail over).
+          const bodyText = await res.text().catch(() => "");
+          if (/agentic harness|only available on/i.test(bodyText)) {
+            const err = new Error(`Model gated for direct callers: ${model} (status=403).`);
+            (err as { status?: number; failover?: boolean }).status = res.status;
+            (err as { status?: number; failover?: boolean }).failover = true;
+            throw err;
+          }
+          throw new LlmAuthError(res.status);
+        }
         if (isDeprecation(res.status)) {
           const err = new Error(`Model deprecated/unavailable: ${model} (status=${res.status}).`);
           (err as { status?: number; failover?: boolean }).status = res.status;

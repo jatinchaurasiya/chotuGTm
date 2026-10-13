@@ -4,7 +4,7 @@
  * Used ONLY when Inception errors/surges. Same output shape and same
  * thresholds as the primary (score 0..1, bands draft/maybe/discard).
  */
-import { retry } from "../queue/retry.js";
+import { retry, isRetryableError } from "../queue/retry.js";
 import { bandFor, combineScores, readThresholds, type TriageBand, type TriageDecision } from "./decide.js";
 
 export type { TriageBand };
@@ -119,10 +119,7 @@ export async function classifyBackstop(input: BackstopInput, opts: BackstopOptio
     {
       maxAttempts: 3,
       baseMs: 1000,
-      retryOn: (err) => {
-        const s = (err as { status?: number }).status ?? 0;
-        return s === 429 || (s >= 500 && s <= 599);
-      },
+      retryOn: (err) => isRetryableError(err),
     },
   );
 

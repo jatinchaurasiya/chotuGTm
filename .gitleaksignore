@@ -1,0 +1,4 @@
+# chotu gitleaks ignore-list — false positives ONLY. Each entry must name the
+# exact benign line. Never add real secrets here; rotate them instead.
+# FP: generic-api-key flags the numeric default in .env.example (no secret).
+.env.example:generic-api-key:17

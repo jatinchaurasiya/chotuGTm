@@ -10,9 +10,9 @@
  * - old.reddit .json is blocked (empty). Jina anonymous is 403 for
  *   reddit.com. Arctic Shift unreachable. search.rss throttled to zero.
  *
- * Hard limit: Reddit throttles RSS per IP (~1 uncached req / 25-60s, then
- * empty 200s). So: sequential fetches, 45s default spacing, max ~10
- * subreddits per run, 2x/day. A full run takes ~8 min — fine for a cron
+ * Hard limit: Reddit throttles RSS per IP (~1 uncached req / minute, then
+ * empty 200s). So: sequential fetches, 60s default spacing, max ~10
+ * subreddits per run, 2x/day. A full run takes ~10 min — fine for a cron
  * worker, fatal for anything interactive. Never parallelize, never retry
  * aggressively: a throttle is a SKIP, not an error.
  */
@@ -95,8 +95,8 @@ export function resetRssThrottle(): void {
 }
 
 export function readRssIntervalMs(): number {
-  const raw = Number(process.env.REDDIT_RSS_MIN_INTERVAL_MS ?? 45000);
-  return Number.isFinite(raw) && raw >= 10000 ? raw : 45000;
+  const raw = Number(process.env.REDDIT_RSS_MIN_INTERVAL_MS ?? 60000);
+  return Number.isFinite(raw) && raw >= 10000 ? raw : 60000;
 }
 
 export function readRssMaxSubs(): number {

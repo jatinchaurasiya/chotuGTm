@@ -12,11 +12,10 @@ if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 
 if command -v gitleaks >/dev/null 2>&1; then
-  if [ -f ".gitleaks.toml" ]; then
-    gitleaks protect --staged --verbose --config .gitleaks.toml
-  else
-    gitleaks protect --staged --verbose
-  fi
+  # Default ruleset (no --config): repo ships no custom config on purpose —
+  # a custom config REPLACES gitleaks' built-in rules and weakens the scan.
+  # .gitleaksignore holds false positives only.
+  gitleaks protect --staged --verbose
   exit $?
 fi
 
