@@ -2,24 +2,28 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="description" content="chotu — review queue, scorecard, ops. You paste, it learns." />
   <title>chotu dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <strong>chotu</strong>
-      <span class="muted">you paste · it learns</span>
-      <span id="health-dot" class="dot unknown" title="API health">●</span>
+  <header class="slab">
+    <div class="slab__row">
+      <a class="slab__mark" href="#" aria-label="chotu home">CHOTU</a>
+      <span class="slab__tag">you paste · it learns</span>
+      <span id="health-dot" class="dot unknown" title="API health" role="status" aria-label="API health"></span>
     </div>
-    <div class="ws-row">
+    <p class="slab__giant" aria-hidden="true">CHOTU</p>
+    <div class="slab__row ws-row">
       <label for="workspace">workspace</label>
       <select id="workspace" aria-label="workspace picker">
         <option value="">loading…</option>
       </select>
-      <button id="refresh" type="button" title="reload current tab">reload</button>
+      <button id="refresh" type="button" class="btn-secondary" title="reload current tab">reload</button>
     </div>
     <nav class="tabs" role="tablist" aria-label="dashboard tabs">
       <button role="tab" aria-selected="true" data-tab="queue" class="active" type="button">Queue</button>
@@ -33,29 +37,48 @@
 
     <!-- QUEUE -->
     <section id="tab-queue" role="tabpanel" aria-label="review queue">
-      <p class="hint">One card per opportunity. Pick a platform tab, copy, paste natively, then register the live URL. chotu never posts.</p>
-      <div id="queue-list" class="cards"></div>
+      <div class="band band--accent" aria-hidden="true"></div>
+      <div class="tabhead">
+        <p class="tabhead__kicker">01 / review</p>
+        <h2 class="tabhead__title">Queue</h2>
+        <p class="hint">One card per opportunity. Pick a platform tab, copy, paste natively, then register the live URL. chotu never posts.</p>
+      </div>
+      <div id="queue-list" class="ledger"></div>
     </section>
 
     <!-- SCORECARD -->
     <section id="tab-scorecard" role="tabpanel" aria-label="scorecard" hidden>
-      <div class="grid2">
+      <div class="band band--ink" aria-hidden="true"></div>
+      <div class="tabhead">
+        <p class="tabhead__kicker">02 / signal</p>
+        <h2 class="tabhead__title">Scorecard</h2>
+        <p class="hint">Directional reads only. Attribution is an estimate, not accounting.</p>
+      </div>
+      <div class="statstrip">
+        <p class="statstrip__kicker">signups · sum of pulled site metrics</p>
+        <p id="signup-total" class="statstrip__figure">—</p>
+      </div>
+      <div class="scoregrid">
         <div class="panel">
-          <h2>Traffic trend <span class="muted small">directional</span></h2>
+          <p class="panel__kicker">traffic</p>
+          <h2 class="panel__title">Trend <span class="muted small">directional</span></h2>
           <svg id="traffic-chart" viewBox="0 0 320 90" role="img" aria-label="traffic trend chart"></svg>
           <div id="traffic-legend" class="muted small"></div>
         </div>
         <div class="panel">
-          <h2>Referrals + signups</h2>
-          <div id="signup-total" class="bignum">—</div>
-          <table id="referral-table">
-            <thead><tr><th>source</th><th>sessions</th></tr></thead>
-            <tbody><tr><td colspan="2" class="muted">no data yet</td></tr></tbody>
-          </table>
+          <p class="panel__kicker">referrals</p>
+          <h2 class="panel__title">Referrals + signups</h2>
+          <div class="tablewrap">
+            <table id="referral-table">
+              <thead><tr><th>source</th><th>sessions</th></tr></thead>
+              <tbody><tr><td colspan="2" class="muted">no data yet</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </div>
       <div class="panel">
-        <h2>Per-post lift <span class="muted small">±3d window · exact vs inferred</span></h2>
+        <p class="panel__kicker">attribution</p>
+        <h2 class="panel__title">Per-post lift <span class="muted small">±3d window · exact vs inferred</span></h2>
         <div class="tablewrap">
           <table id="lift-table">
             <thead><tr><th>post</th><th>window</th><th>traffic lift</th><th>signup lift</th><th>method</th></tr></thead>
@@ -64,7 +87,8 @@
         </div>
       </div>
       <div class="panel">
-        <h2>Channel × angle × hook <span class="muted small">PMF signal, directional</span></h2>
+        <p class="panel__kicker">pmf</p>
+        <h2 class="panel__title">Channel × angle × hook <span class="muted small">PMF signal, directional</span></h2>
         <div class="tablewrap">
           <table id="matrix-table">
             <thead><tr><th>channel</th><th>angle</th><th>hook</th><th>n</th><th>avg lift</th></tr></thead>
@@ -76,12 +100,20 @@
 
     <!-- OPS -->
     <section id="tab-ops" role="tabpanel" aria-label="ops" hidden>
+      <div class="band band--accent" aria-hidden="true"></div>
+      <div class="tabhead">
+        <p class="tabhead__kicker">03 / repair</p>
+        <h2 class="tabhead__title">Ops</h2>
+        <p class="hint">Dead-letter queue with retry. Nothing here posts anywhere.</p>
+      </div>
       <div class="panel">
-        <h2>Doctor</h2>
+        <p class="panel__kicker">health</p>
+        <h2 class="panel__title">Doctor</h2>
         <ul id="doctor-list" class="kv"><li class="muted">checking…</li></ul>
       </div>
       <div class="panel">
-        <h2>Failed jobs <span class="muted small">dead-letter → retry</span></h2>
+        <p class="panel__kicker">dead-letter</p>
+        <h2 class="panel__title">Failed jobs <span class="muted small">dead-letter → retry</span></h2>
         <div class="tablewrap">
           <table id="jobs-table">
             <thead><tr><th>id</th><th>type</th><th>error</th><th>attempts</th><th></th></tr></thead>
@@ -92,8 +124,15 @@
     </section>
   </main>
 
-  <footer class="foot muted small">
-    <span>attribution is directional, not accounting · anon-key + RLS only</span>
+  <footer class="foot" aria-label="Footer">
+    <div class="foot-marquee" aria-hidden="true">
+      <div class="foot-marquee__track">
+        <span>CHOTU · QUEUE · SCORECARD · OPS · DIRECTIONAL ATTRIBUTION ·&nbsp;</span>
+        <span>CHOTU · QUEUE · SCORECARD · OPS · DIRECTIONAL ATTRIBUTION ·&nbsp;</span>
+      </div>
+    </div>
+    <p class="visually-hidden">Chotu dashboard status footer. Attribution is directional, not accounting.</p>
+    <p class="foot__meta muted small">attribution is directional, not accounting · anon-key + RLS only</p>
   </footer>
 
   <script src="./app.js" defer></script>

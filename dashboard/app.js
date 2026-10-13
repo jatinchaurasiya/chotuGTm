@@ -452,7 +452,7 @@ async function loadJobs() {
     const j = await fetchJSON(qsWorkspace('/api/failed-jobs'));
     const list = Array.isArray(j) ? j : (j?.jobs ?? j?.failed_jobs ?? j?.data ?? []);
     state.jobs = list;
-    if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="muted">no failed jobs 🎉</td></tr>'; return; }
+    if (!list.length) { tb.innerHTML = '<tr><td colspan="5" class="muted">no failed jobs</td></tr>'; return; }
     tb.innerHTML = '';
     for (const job of list) {
       const tr = document.createElement('tr');
@@ -473,7 +473,7 @@ async function loadJobs() {
             body: JSON.stringify({ job_id: job.id, workspace_id: state.workspaceId }),
           });
           tr.remove();
-          if (!$('#jobs-table tbody').children.length) tb.innerHTML = '<tr><td colspan="5" class="muted">no failed jobs 🎉</td></tr>';
+          if (!$('#jobs-table tbody').children.length) tb.innerHTML = '<tr><td colspan="5" class="muted">no failed jobs</td></tr>';
         } catch (e) {
           btn.disabled = false;
           notice('retry failed: ' + e.message);
