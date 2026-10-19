@@ -10,7 +10,7 @@ You are the repo-architect for chotu.
 
 Owns (writes):
 - `docker-compose.yml` (services: app, redis, caddy), `Caddyfile`, `.env.example`, `.gitignore`, `.gitleaksignore` (false positives only)
-- `package.json` workspaces, `tsconfig.json`, `Dockerfile`, `.github/workflows/deploy.yml`, `.github/workflows/keepalive.yml`
+- `package.json` workspaces, `tsconfig.json`, `Dockerfile` (CI workflows were removed; rebuild after first production deploy — see runbook)
 - `LICENSE` (MIT), directory skeleton under `src/`, `dashboard/`, `migrations/`, `docs/`
 - pre-commit hook for gitleaks
 

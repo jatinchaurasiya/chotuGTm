@@ -12,10 +12,22 @@ free -h  # verify /swapfile present
 # Caddy hash: docker run --rm caddy:2-alpine caddy hash-password
 ```
 
-## Deploy
+## Deploy (manual — CI/CD paused until the app is stable)
 
-Push to `main` → GitHub Actions SSH deploys (`/opt/chotu`: pull, build,
-`docker compose up -d --build`, migrate). First time:
+GitHub Actions were removed deliberately (recoverable from git history).
+Until the pipeline is rebuilt, every deploy is manual and visible:
+
+```bash
+ssh <box>
+cd /opt/chotu && git pull origin main
+docker compose up -d --build
+docker compose exec -T app node scripts/migrate.js
+curl -fsS "https://<SITE_HOST>/health" -u "$DASHBOARD_USER:$DASHBOARD_PASS"
+docker compose logs --tail=50 app worker
+```
+
+Rollback: `git pull` the previous commit and re-run the same three commands.
+First time:
 
 ```bash
 sudo mkdir -p /opt/chotu && sudo chown $USER /opt/chotu
@@ -39,7 +51,7 @@ docker compose up -d --build && docker compose exec -T app node scripts/migrate.
 |---|---|
 | OOM / app restarts | `free -h`, check swap on; lower discover concurrency to 1; redis capped 256mb |
 | Queue stuck | `docker compose exec -T redis redis-cli LLEN ...` or retry from Ops tab; poison rows land in `failed_jobs` |
-| Supabase paused (1wk idle) | keepalive workflow pings twice weekly; manual: open dashboard SQL editor |
+| Supabase paused (1wk idle) | normally impossible while the app runs (worker hits the DB hourly); if everything is off 7+ days: open the Supabase dashboard SQL editor once, or `curl -sf "$SUPABASE_URL/rest/v1/workspaces?select=id&limit=1" -H "apikey: $SUPABASE_ANON_KEY"`. Optional hardening: one server crontab ping (no GitHub needed) |
 | GSC token expired | consent screen must be Production (7-day Testing expiry); re-run `uvx seo-monster auth` on box |
 | 429 OpenRouter | worker backs off proactively; check Ops doctor for budget; drafts resume next cycle |
 
